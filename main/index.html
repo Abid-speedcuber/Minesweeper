@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Seeded Minesweeper Duel</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="app">
+  <h1 id="title">Seeded Minesweeper Duel</h1>
+
+  <section id="setup" class="setup">
+    <label>Seed
+      <input id="seed" class="seed" value="duel-001" />
+    </label>
+    <label>Width
+      <input id="width" type="number" min="5" max="60" value="16" />
+    </label>
+    <label>Height
+      <input id="height" type="number" min="5" max="40" value="16" />
+    </label>
+    <label>Mines
+      <input id="mines" type="number" min="1" value="40" />
+    </label>
+    <label>Cell size
+      <input id="cellSize" type="number" min="16" max="50" value="30" />
+    </label>
+    <label>
+      <span>Swap clicks</span>
+      <button id="swapToggle" type="button" class="secondary">Normal</button>
+    </label>
+    <button id="startBtn">Start</button>
+    <div id="message" class="note">
+      Green cells mark the biggest empty region. Start from any green cell.
+    </div>
+  </section>
+
+  <section id="hud" class="hud hidden-ui">
+    <span id="flags">Flags: 0/0</span>
+    <span id="timer">Time: 0.0s</span>
+    <button id="pauseBtn" class="secondary">Pause</button>
+    <button id="resetBtn" class="secondary">Reset</button>
+  </section>
+
+  <div class="board-wrap">
+    <div id="boardShell">
+      <div id="pauseMask">PAUSED</div>
+      <div id="board"></div>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="script.js"></script>
+</body>
+</html>
