@@ -1,0 +1,24 @@
+{
+  "name": "minesweeper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Abid-speedcuber/Minesweeper.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Abid-speedcuber/Minesweeper/issues"
+  },
+  "homepage": "https://github.com/Abid-speedcuber/Minesweeper#readme",
+  "devDependencies": {
+    "terser": "^5.47.1"
+  }
+}

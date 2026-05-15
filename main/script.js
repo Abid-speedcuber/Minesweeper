@@ -133,9 +133,6 @@
 
     render();
     updateHUD();
-
-    const regionSize = biggestRegion.size;
-    messageEl.textContent = `Biggest empty region size: ${regionSize}`;
   }
 
   function findBiggestZeroRegion() {
