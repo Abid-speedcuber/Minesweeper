@@ -10,6 +10,7 @@ const flagsEl = document.getElementById("flags");
 const timerEl = document.getElementById("timer");
 const pauseBtn = document.getElementById("pauseBtn");
 const autosolveBtn = document.getElementById("autosolveBtn");
+const autosolveSpeedEl = document.getElementById("autosolveSpeed");
 const swapToggle = document.getElementById("swapToggle");
 
 let W, H, M, seedText;
@@ -33,6 +34,7 @@ let autosolveTimer = null;
 let isAutoSolving = false;
 const AUTOSOLVE_READ_DELAY = 1400;
 const AUTOSOLVE_MOVE_DELAY = 220;
+const AUTOSOLVE_SPEED_KEY = "minesweeper-autosolve-speed";
 const HINT_COLORS = ["#67e8f9", "#c4b5fd", "#fda4af", "#86efac", "#fde68a", "#f9a8d4", "#93c5fd", "#fdba74"];
 
 function escapeHtml(value) {
@@ -654,8 +656,18 @@ function updateAutosolveButton() {
     autosolveBtn.classList.toggle("autosolve-active", isAutoSolving);
 }
 
+function getAutosolveSpeed() {
+    const speed = parseFloat(autosolveSpeedEl?.value || "0.4");
+    return Number.isFinite(speed) ? speed : 0.4;
+}
+
 function getAutosolveReadDelay(text) {
-    return Math.min(6500, AUTOSOLVE_READ_DELAY + (text || "").length * 12);
+    const baseDelay = AUTOSOLVE_READ_DELAY + (text || "").length * 12;
+    return Math.min(12000, Math.round(baseDelay * getAutosolveSpeed()));
+}
+
+function getAutosolveMoveDelay() {
+    return Math.round(AUTOSOLVE_MOVE_DELAY * getAutosolveSpeed());
 }
 
 function stopAutosolve() {
@@ -761,7 +773,7 @@ function autosolveStep() {
             checkWin();
             if (gameOver) return;
             activeHint = null;
-            autosolveTimer = setTimeout(autosolveStep, AUTOSOLVE_MOVE_DELAY);
+            autosolveTimer = setTimeout(autosolveStep, getAutosolveMoveDelay());
         }, getAutosolveReadDelay(activeHint.explanation));
         return;
     }
@@ -782,7 +794,7 @@ function autosolveStep() {
         if (gameOver) return;
         activeHint = null;
         paint();
-        autosolveTimer = setTimeout(autosolveStep, AUTOSOLVE_MOVE_DELAY);
+        autosolveTimer = setTimeout(autosolveStep, getAutosolveMoveDelay());
     }, getAutosolveReadDelay(hint.explanation));
 }
 
@@ -818,6 +830,9 @@ document.getElementById("startBtn").addEventListener("click", buildBoard);
 document.getElementById("resetBtn").addEventListener("click", resetToSetup);
 document.getElementById("hintBtn").addEventListener("click", showHint);
 autosolveBtn.addEventListener("click", toggleAutosolve);
+autosolveSpeedEl?.addEventListener("change", () => {
+    localStorage.setItem(AUTOSOLVE_SPEED_KEY, autosolveSpeedEl.value);
+});
 
 document.getElementById("randomBtn").addEventListener("click", () => {
     document.getElementById("seed").value = Math.random().toString(36).slice(2, 10);
@@ -1100,6 +1115,8 @@ function updateRatingBadge(emoji, cls, text) {
 });
 
 loadSettings();
+const savedAutosolveSpeed = localStorage.getItem(AUTOSOLVE_SPEED_KEY);
+if (savedAutosolveSpeed && autosolveSpeedEl) autosolveSpeedEl.value = savedAutosolveSpeed;
 document.getElementById("seed").value = getDailySeed();
 setDifficulty("medium");
 schedulePreview();
