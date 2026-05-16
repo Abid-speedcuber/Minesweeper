@@ -9,6 +9,7 @@ const maskEl = document.getElementById("pauseMask");
 const flagsEl = document.getElementById("flags");
 const timerEl = document.getElementById("timer");
 const pauseBtn = document.getElementById("pauseBtn");
+const autosolveBtn = document.getElementById("autosolveBtn");
 const swapToggle = document.getElementById("swapToggle");
 
 let W, H, M, seedText;
@@ -28,6 +29,10 @@ let timerId = null;
 
 // ── Hint state ────────────────────────────────
 let activeHint = null; // { tier, type, cells[], explanation }
+let autosolveTimer = null;
+let isAutoSolving = false;
+const AUTOSOLVE_READ_DELAY = 1400;
+const AUTOSOLVE_MOVE_DELAY = 220;
 const HINT_COLORS = ["#67e8f9", "#c4b5fd", "#fda4af", "#86efac", "#fde68a", "#f9a8d4", "#93c5fd", "#fdba74"];
 
 function escapeHtml(value) {
@@ -46,6 +51,10 @@ function hintLabelToIndex(label) {
     const col = parseInt(match[2], 10);
     if (row < 1 || col < 1 || row > H || col > W) return null;
     return (row - 1) * W + (col - 1);
+}
+
+function cellLabelForIndex(i) {
+    return `r${Math.floor(i / W) + 1}c${(i % W) + 1}`;
 }
 
 function getHintColorMap(text) {
@@ -212,6 +221,7 @@ function clamp(n, lo, hi) {
 }
 
 function buildBoard() {
+    stopAutosolve();
     W = clamp(parseInt(document.getElementById("width").value, 10), 5, 60);
     H = clamp(parseInt(document.getElementById("height").value, 10), 5, 40);
     M = parseInt(document.getElementById("mines").value, 10);
@@ -363,7 +373,7 @@ function render() {
 
         el.addEventListener("click", e => {
             e.preventDefault();
-            if (paused) return;
+            if (paused || isAutoSolving) return;
             clearHint();
             if (e.shiftKey) { toggleQuestion(c.i); return; }
             swapClicks ? doRightAction(c.i) : reveal(c.i);
@@ -372,7 +382,7 @@ function render() {
         el.addEventListener("contextmenu", e => {
             e.preventDefault();
             e.stopPropagation();
-            if (paused) return;
+            if (paused || isAutoSolving) return;
             clearHint();
             swapClicks ? reveal(c.i) : doRightAction(c.i);
         });
@@ -534,6 +544,7 @@ function toggleQuestion(i) {
 function lose() {
     gameOver = true;
     clearInterval(timerId);
+    stopAutosolve();
     clearHint();
     for (const c of cells) { if (c.mine) c.open = true; }
     paint();
@@ -545,6 +556,7 @@ function checkWin() {
     if (openedCount === W * H - M) {
         gameOver = true;
         clearInterval(timerId);
+        stopAutosolve();
         clearHint();
         for (const c of cells) { if (c.mine) c.flag = true; }
         paint();
@@ -572,6 +584,7 @@ function elapsed() {
 
 function togglePause() {
     if (!running || gameOver) return;
+    if (isAutoSolving) stopAutosolve();
     paused = !paused;
     if (paused) {
         pausedAt = Date.now();
@@ -590,6 +603,7 @@ function togglePause() {
 
 function resetToSetup() {
     clearInterval(timerId);
+    stopAutosolve();
     running = false;
     paused = false;
     gameOver = false;
@@ -615,8 +629,52 @@ function clearHintUI() {
     if (panel) panel.classList.add("hidden-ui");
 }
 
+function getAutosolveStartCell() {
+    if (biggestRegion.size > 0) return [...biggestRegion][0];
+    const cx = (W - 1) / 2;
+    const cy = (H - 1) / 2;
+    let best = null;
+    let bestScore = Infinity;
+    for (const c of cells) {
+        if (c.mine) continue;
+        const x = c.i % W;
+        const y = Math.floor(c.i / W);
+        const score = (x - cx) ** 2 + (y - cy) ** 2;
+        if (score < bestScore) {
+            best = c.i;
+            bestScore = score;
+        }
+    }
+    return best;
+}
+
+function updateAutosolveButton() {
+    if (!autosolveBtn) return;
+    autosolveBtn.textContent = isAutoSolving ? "■ Stop" : "▶ Autosolve";
+    autosolveBtn.classList.toggle("autosolve-active", isAutoSolving);
+}
+
+function getAutosolveReadDelay(text) {
+    return Math.min(6500, AUTOSOLVE_READ_DELAY + (text || "").length * 12);
+}
+
+function stopAutosolve() {
+    isAutoSolving = false;
+    clearTimeout(autosolveTimer);
+    autosolveTimer = null;
+    updateAutosolveButton();
+}
+
+function displayHint(hint) {
+    const tierLabels = { 1: "Basic", 2: "Intermediate", 3: "Advanced", 4: "Deep logic", 5: "Guess" };
+    const tier = tierLabels[hint.tier] || "";
+    showHintPanel(`💡 ${tier}`, hint.explanation, hint.type === "flag" ? "hint-flag-panel" : hint.type === "guess" ? "hint-guess-panel" : "hint-open-panel");
+    paint();
+}
+
 function showHint() {
     if (!running || gameOver || paused) return;
+    if (isAutoSolving) stopAutosolve();
     if (!firstMoveDone) {
         showHintPanel("💡", "Click any green cell to start — it opens the largest safe region automatically.", "hint-open");
         return;
@@ -627,10 +685,116 @@ function showHint() {
         return;
     }
     activeHint = hint;
-    const tierLabels = { 1: "Basic", 2: "Intermediate", 3: "Advanced", 4: "Deep logic", 5: "Guess" };
-    const tier = tierLabels[hint.tier] || "";
-    showHintPanel(`💡 ${tier}`, hint.explanation, hint.type === "flag" ? "hint-flag-panel" : hint.type === "guess" ? "hint-guess-panel" : "hint-open-panel");
-    paint();
+    displayHint(hint);
+}
+
+function applyAutosolveHint(hint) {
+    if (!hint || gameOver) return;
+
+    if (hint.type === "flag") {
+        startTimer();
+        for (const i of hint.cells) {
+            const c = cells[i];
+            if (!c || c.open || c.flag) continue;
+            c.question = false;
+            c.flag = true;
+        }
+        paint();
+        updateHUD();
+        return;
+    }
+
+    if (hint.type === "open" || hint.type === "guess") {
+        for (const i of hint.cells) {
+            if (gameOver) return;
+            const c = cells[i];
+            if (!c || c.open || c.flag) continue;
+            reveal(i);
+        }
+    }
+}
+
+function getAutosolveHint() {
+    const hint = getNextHint(cells, W, H, M);
+    if (!hint || hint.type !== "guess") return hint;
+
+    const hintedCell = cells[hint.cells[0]];
+    const safeCell = hintedCell && !hintedCell.open && !hintedCell.flag && !hintedCell.mine
+        ? hintedCell
+        : cells.find(c => !c.open && !c.flag && !c.mine);
+    if (!safeCell) return null;
+
+    return {
+        tier: hint.tier,
+        type: "guess",
+        cells: [safeCell.i],
+        explanation: `${hint.explanation}\n\nAutosolve can see the generated board, so instead of risking a random guess, it will open known-safe ${cellLabelForIndex(safeCell.i)} and keep solving.`
+    };
+}
+
+function autosolveStep() {
+    if (!isAutoSolving || !running || paused || gameOver) {
+        stopAutosolve();
+        return;
+    }
+
+    if (!firstMoveDone) {
+        const startCell = getAutosolveStartCell();
+        if (startCell === null) {
+            showHintPanel("✅ Autosolve", "No safe starting cell was found.", "");
+            stopAutosolve();
+            return;
+        }
+        activeHint = {
+            tier: 1,
+            type: "open",
+            cells: [startCell],
+            explanation: `Start at ${cellLabelForIndex(startCell)}. This opens a safe starting area.`
+        };
+        displayHint(activeHint);
+        autosolveTimer = setTimeout(() => {
+            if (!isAutoSolving || gameOver) return;
+            firstMoveDone = true;
+            startTimer();
+            floodReveal(startCell);
+            paint();
+            checkWin();
+            if (gameOver) return;
+            activeHint = null;
+            autosolveTimer = setTimeout(autosolveStep, AUTOSOLVE_MOVE_DELAY);
+        }, getAutosolveReadDelay(activeHint.explanation));
+        return;
+    }
+
+    const hint = getAutosolveHint();
+    if (!hint) {
+        showHintPanel("✅ Autosolve", "The board looks solved or no further moves were detected.", "");
+        stopAutosolve();
+        return;
+    }
+
+    activeHint = hint;
+    displayHint(hint);
+
+    autosolveTimer = setTimeout(() => {
+        if (!isAutoSolving || gameOver) return;
+        applyAutosolveHint(hint);
+        if (gameOver) return;
+        activeHint = null;
+        paint();
+        autosolveTimer = setTimeout(autosolveStep, AUTOSOLVE_MOVE_DELAY);
+    }, getAutosolveReadDelay(hint.explanation));
+}
+
+function toggleAutosolve() {
+    if (!running || gameOver || paused) return;
+    if (isAutoSolving) {
+        stopAutosolve();
+        return;
+    }
+    isAutoSolving = true;
+    updateAutosolveButton();
+    autosolveStep();
 }
 
 function showHintPanel(title, text, cls) {
@@ -639,7 +803,13 @@ function showHintPanel(title, text, cls) {
     panel.className = "hint-panel " + (cls || "");
     panel.classList.remove("hidden-ui");
     const formatted = formatHintText(text);
-    panel.innerHTML = `<span class="hint-title">${title}</span><span class="hint-text">${formatted}</span><button class="hint-close btn-icon" onclick="this.closest('.hint-panel').classList.add('hidden-ui'); activeHint=null; paint()">✕</button>`;
+    panel.innerHTML = `<span class="hint-title">${title}</span><span class="hint-text">${formatted}</span><button class="hint-close btn-icon" type="button">✕</button>`;
+    panel.querySelector(".hint-close")?.addEventListener("click", () => {
+        stopAutosolve();
+        activeHint = null;
+        clearHintUI();
+        paint();
+    });
 }
 
 document.addEventListener("contextmenu", e => { if (running) e.preventDefault(); });
@@ -647,6 +817,7 @@ document.addEventListener("contextmenu", e => { if (running) e.preventDefault();
 document.getElementById("startBtn").addEventListener("click", buildBoard);
 document.getElementById("resetBtn").addEventListener("click", resetToSetup);
 document.getElementById("hintBtn").addEventListener("click", showHint);
+autosolveBtn.addEventListener("click", toggleAutosolve);
 
 document.getElementById("randomBtn").addEventListener("click", () => {
     document.getElementById("seed").value = Math.random().toString(36).slice(2, 10);

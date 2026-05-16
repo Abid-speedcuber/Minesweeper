@@ -234,6 +234,11 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
     white-space: nowrap;
 }
 .btn-secondary:hover { background: var(--hidden); color: var(--text); border-color: var(--border2); }
+.btn-secondary.autosolve-active {
+    background: #0e7490;
+    color: #ecfeff;
+    border-color: #22d3ee;
+}
 
 .setup-actions {
     display: flex;

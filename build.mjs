@@ -26,10 +26,20 @@ writeFileSync(join(dest, "styles.css"), minifyCSS(css));
 
 const js = readFileSync(join(src, "script.js"), "utf-8");
 const { code } = await minify(js, {
+  module: true,
   mangle: true,
   compress: true,
   format: { comments: false },
 });
 writeFileSync(join(dest, "script.js"), code);
+
+const solver = readFileSync(join(src, "solver.js"), "utf-8");
+const { code: solverCode } = await minify(solver, {
+  module: true,
+  mangle: true,
+  compress: true,
+  format: { comments: false },
+});
+writeFileSync(join(dest, "solver.js"), solverCode);
 
 console.log("Build complete → public/");

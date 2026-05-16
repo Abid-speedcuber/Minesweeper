@@ -100,28 +100,29 @@ function tier1bMoves(cells, W, H, M) {
     const flagReasons = new Map();
     const openReasons = new Map();
 
+    const allUnrevealed = cells.filter(c => !c.open && !c.flag).length;
+
     for (const cell of allFrontier) {
         // Test: assume cell is SAFE → does any constraint become impossible?
-        const safeViolation = checkViolation(cell, false, constraints, remaining, allFrontier);
+        const safeViolation = checkViolation(cell, false, constraints, remaining, allFrontier, allUnrevealed);
         if (safeViolation) {
             toFlag.add(cell);
             flagReasons.set(cell, safeViolation);
         }
 
         // Test: assume cell is a MINE → does any constraint become impossible?
-        const mineViolation = checkViolation(cell, true, constraints, remaining, allFrontier);
+        const mineViolation = checkViolation(cell, true, constraints, remaining, allFrontier, allUnrevealed);
         if (mineViolation) {
             toOpen.add(cell);
             openReasons.set(cell, mineViolation);
         }
     }
-
     return { toFlag, toOpen, flagReasons, openReasons };
 }
 
 // Check if forcing `cell` to `isMine` creates a contradiction.
 // Returns a reason string if contradiction found, null otherwise.
-function checkViolation(cell, isMine, constraints, remaining, allFrontier) {
+function checkViolation(cell, isMine, constraints, remaining, allFrontier, allUnrevealed) {
     // Build reduced constraints with this cell fixed
     const reduced = constraints.map(con => {
         if (!con.cells.has(cell)) return { ...con, cells: new Set(con.cells) };
@@ -136,15 +137,14 @@ function checkViolation(cell, isMine, constraints, remaining, allFrontier) {
         if (con.mines > con.cells.size) return `placing a mine here would leave a neighboring number cell unable to reach its mine count`;
     }
 
-    // Check global mine count feasibility
-    const otherFrontier = allFrontier.filter(c => c !== cell);
+    // Check global mine count feasibility against ALL unrevealed cells (frontier + dark)
     const minesNeededElsewhere = isMine ? remaining - 1 : remaining;
+    const availableElsewhere = allUnrevealed - 1; // subtract the cell we just fixed
     if (minesNeededElsewhere < 0) return `there are no mines left to place`;
-    if (minesNeededElsewhere > otherFrontier.length) return `there aren't enough remaining cells to place all mines`;
+    if (minesNeededElsewhere > availableElsewhere) return `there aren't enough remaining cells on the board to place all mines`;
 
     return null;
 }
-
 // ── TIER 2: Subset elimination ───────────────
 function tier2Moves(constraints) {
     const toFlag = new Set();
