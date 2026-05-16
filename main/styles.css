@@ -1,13 +1,15 @@
 :root {
     --cell: 30px;
-    --bg: #0d0e11;
+    --bg: #3a3e4b;
     --surface: #16181d;
     --surface2: #1e2028;
-    --hidden: #2a2d38;
+    --surface3: #1a1f33;
+    --hidden: #3f4452;
     --hidden-hover: #343848;
+    --exposed-hover: #6e7180;
     --open: #c9ccd4;
-    --region: #163d2a;
-    --region-hover: #1f5239;
+    --region: #10bd69;
+    --region-hover: #36815d;
     --text: #e4e6ed;
     --text-muted: #5a6172;
     --text-dim: #8891a4;
@@ -383,36 +385,37 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
     display: grid;
     place-items: center;
     font-weight: 800;
-    font-size: 12px;
+    font-size: calc(var(--cell) * 0.58);
+    line-height: 1;
     background: var(--hidden);
     cursor: pointer;
     transition: background 0.06s;
 }
 
-.cell.hidden:hover,
-.cell.chordable:hover { background: var(--hidden-hover); }
+.cell.hidden:hover {background: var(--hidden-hover)}
+.cell.chordable:hover { background: var(--exposed-hover); }
 
 .cell.region { background: var(--region); }
 .cell.region:hover { background: var(--region-hover); }
 .cell.open { background: var(--open); cursor: default; }
-.cell.flagged { background: #2d1f08; }
+.cell.flagged { background: var(--surface3); }
 .cell.question { background: var(--surface2); color: var(--text-dim); }
 .cell.mine-hit { background: var(--danger); }
 
-.n1 { color: #60a5fa; }
-.n2 { color: #4ade80; }
-.n3 { color: #f87171; }
-.n4 { color: #c084fc; }
-.n5 { color: #fb923c; }
-.n6 { color: #22d3ee; }
-.n7 { color: #e2e8f0; }
-.n8 { color: #94a3b8; }
+.n1 { color: #115ab3; }
+.n2 { color: #065f26; }
+.n3 { color: #cf0000; }
+.n4 { color: #8337cf; }
+.n5 { color: #c0661c; }
+.n6 { color: #116875; }
+.n7 { color: #210f4b; }
+.n8 { color: #000000; }
 
 #pauseMask {
     display: none;
     position: absolute;
     inset: 0;
-    background: rgba(0,0,0,0.88);
+    background: rgb(82, 82, 82);
     z-index: 5;
     place-items: center;
     font-size: 20px;

@@ -13,51 +13,83 @@
   </header>
 
   <section id="setup" class="setup">
-    <div class="card">
-      <div class="field-group">
-        <div class="field seed-field">
-          <label for="seed">Seed</label>
-          <div class="seed-wrap">
-            <input id="seed" class="seed" spellcheck="false" autocomplete="off" />
-            <button id="copyBtn" class="btn-icon" type="button" title="Copy seed">📋</button>
+    <div class="setup-layout">
+
+      <!-- LEFT: config -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Seeded Minesweeper</h2>
+          <p class="card-sub">Every seed is a unique, reproducible puzzle</p>
+        </div>
+
+        <div class="diff-row">
+          <button class="diff-btn" data-diff="easy">Easy</button>
+          <button class="diff-btn" data-diff="medium">Medium</button>
+          <button class="diff-btn" data-diff="hard">Hard</button>
+          <button class="diff-btn" data-diff="expert">Expert</button>
+          <button class="diff-btn" data-diff="master">Master</button>
+        </div>
+
+        <div class="field-group">
+          <div class="field seed-field">
+            <label for="seed">Seed</label>
+            <div class="seed-wrap">
+              <input id="seed" class="seed" spellcheck="false" autocomplete="off" placeholder="e.g. abc123" />
+              <button id="copyBtn" class="btn-icon" type="button" title="Copy seed">📋</button>
+              <button id="randomBtn" type="button" class="btn-icon" title="Random seed">🎲</button>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="width">Width</label>
+              <input id="width" type="number" min="5" max="60" value="16" />
+            </div>
+            <div class="field">
+              <label for="height">Height</label>
+              <input id="height" type="number" min="5" max="40" value="16" />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="mines">Mines</label>
+              <input id="mines" type="number" min="1" value="40" />
+            </div>
+            <div class="field">
+              <label for="cellSize">Cell size</label>
+              <input id="cellSize" type="number" min="16" max="50" value="30" />
+            </div>
+          </div>
+          <div class="field toggle-field">
+            <label>
+              <span>Swap clicks</span>
+              <button id="swapToggle" type="button" class="btn-secondary">Normal</button>
+            </label>
           </div>
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="width">Width</label>
-            <input id="width" type="number" min="5" max="60" />
-          </div>
-          <div class="field">
-            <label for="height">Height</label>
-            <input id="height" type="number" min="5" max="40" />
-          </div>
+
+        <div class="setup-actions">
+          <button id="startBtn" class="btn-primary">▶ Start Game</button>
+          <button id="statsBtn" type="button" class="btn-secondary">📊 Stats</button>
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="mines">Mines</label>
-            <input id="mines" type="number" min="1" />
-          </div>
-          <div class="field">
-            <label for="cellSize">Cell size</label>
-            <input id="cellSize" type="number" min="16" max="50" />
-          </div>
-        </div>
-        <div class="field toggle-field">
-          <label>
-            <span>Swap clicks</span>
-            <button id="swapToggle" type="button" class="btn-secondary">Normal</button>
-          </label>
-        </div>
+
+        <div id="statsBox" class="stats-box"></div>
+
+        <p id="message" class="note">Green cells mark the biggest empty region. Start from any green cell.</p>
       </div>
-      <div class="setup-actions">
-        <button id="startBtn" class="btn-primary">Start Game</button>
-        <button id="randomBtn" type="button" class="btn-secondary">🎲 Random</button>
+
+      <!-- RIGHT: live preview -->
+      <div class="preview-panel">
+        <div class="preview-label">Preview</div>
+        <div class="preview-wrap">
+          <canvas id="previewCanvas"></canvas>
+        </div>
+        <div id="previewInfo" class="preview-info"></div>
       </div>
-      <p id="message" class="note">Green cells mark the biggest empty region. Start from any green cell.</p>
+
     </div>
   </section>
 
-  <section id="hud" class="hud hidden-ui">
+  <section id="hud" class="hud hidden-ui" style="margin-bottom:12px;">
     <span id="flags">Flags: 0/0</span>
     <span id="timer">Time: 0.0s</span>
     <button id="pauseBtn" class="btn-secondary">Pause</button>
@@ -71,6 +103,24 @@
     </div>
   </div>
 </main>
+
+<div id="statsModal" class="stats-modal hidden-ui">
+  <div class="stats-modal-inner">
+    <div class="stats-modal-header">
+      <span class="stats-modal-title">Statistics</span>
+      <button id="statsCloseBtn" class="btn-icon" title="Close">✕</button>
+    </div>
+    <div class="stats-tabs">
+      <button class="stats-tab active" data-tab="easy">Easy</button>
+      <button class="stats-tab" data-tab="medium">Medium</button>
+      <button class="stats-tab" data-tab="hard">Hard</button>
+      <button class="stats-tab" data-tab="expert">Expert</button>
+      <button class="stats-tab" data-tab="master">Master</button>
+      <button class="stats-tab" data-tab="custom">Custom</button>
+    </div>
+    <div id="statsContent" class="stats-content"></div>
+  </div>
+</div>
 
 <script type="module" src="script.js"></script>
 </body>

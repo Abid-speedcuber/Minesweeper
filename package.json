@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint main/script.js"
   },
   "repository": {
     "type": "git",
@@ -13,12 +14,14 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "bugs": {
     "url": "https://github.com/Abid-speedcuber/Minesweeper/issues"
   },
   "homepage": "https://github.com/Abid-speedcuber/Minesweeper#readme",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.0",
     "terser": "^5.47.1"
   }
 }
