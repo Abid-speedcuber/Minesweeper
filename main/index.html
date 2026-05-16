@@ -84,6 +84,7 @@
           <canvas id="previewCanvas"></canvas>
         </div>
         <div id="previewInfo" class="preview-info"></div>
+        <div id="ratingBadge" class="rating-badge"></div>
       </div>
 
     </div>
@@ -92,10 +93,12 @@
   <section id="hud" class="hud hidden-ui" style="margin-bottom:12px;">
     <span id="flags">Flags: 0/0</span>
     <span id="timer">Time: 0.0s</span>
+    <button id="hintBtn" class="btn-secondary">💡 Hint</button>
     <button id="pauseBtn" class="btn-secondary">Pause</button>
     <button id="resetBtn" class="btn-secondary">Reset</button>
   </section>
 
+  <div id="hintPanel" class="hint-panel hidden-ui"></div>
   <div class="board-wrap">
     <div id="boardShell">
       <div id="pauseMask">PAUSED</div>

@@ -1,5 +1,5 @@
 // Minesweeper Game Module
-// All code is scoped within this module file
+import { rateBoard, getNextHint, TIER, RATING } from "./solver.js";
 
 const setupEl = document.getElementById("setup");
 const hudEl = document.getElementById("hud");
@@ -25,6 +25,9 @@ let startTime = null;
 let pausedAt = null;
 let totalPaused = 0;
 let timerId = null;
+
+// ── Hint state ────────────────────────────────
+let activeHint = null; // { tier, type, cells[], explanation }
 
 function xmur3(str) {
   let h = 1779033703 ^ str.length;
@@ -74,9 +77,7 @@ function getDailySeed() {
 
 function resolveActualSeed(input) {
   const trimmed = input.replace(/^#/, '').trim();
-  if (/^\d+$/.test(trimmed)) {
-    return trimmed;
-  }
+  if (/^\d+$/.test(trimmed)) return trimmed;
   const d = new Date();
   const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return `${trimmed}::${dateStr}`;
@@ -112,8 +113,6 @@ function seedToNumericStable(resolvedSeed) {
   return num;
 }
 
-
-
 const STORAGE_KEY = "minesweeper-settings";
 
 function saveSettings() {
@@ -142,13 +141,8 @@ function loadSettings() {
   } catch {}
 }
 
-function idx(x, y) {
-  return y * W + x;
-}
-
-function coords(i) {
-  return [i % W, Math.floor(i / W)];
-}
+function idx(x, y) { return y * W + x; }
+function coords(i) { return [i % W, Math.floor(i / W)]; }
 
 function neighbors(i) {
   const [x, y] = coords(i);
@@ -156,8 +150,7 @@ function neighbors(i) {
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       if (dx === 0 && dy === 0) continue;
-      const nx = x + dx;
-      const ny = y + dy;
+      const nx = x + dx, ny = y + dy;
       if (nx >= 0 && nx < W && ny >= 0 && ny < H) out.push(idx(nx, ny));
     }
   }
@@ -168,8 +161,6 @@ function clamp(n, lo, hi) {
   if (Number.isNaN(n)) return lo;
   return Math.max(lo, Math.min(hi, n));
 }
-
-
 
 function buildBoard() {
   W = clamp(parseInt(document.getElementById("width").value, 10), 5, 60);
@@ -198,14 +189,12 @@ function buildBoard() {
   const cx = (W - 1) / 2, cy = (H - 1) / 2;
   const maxDist = Math.sqrt(cx * cx + cy * cy);
 
-  // Build weighted pool: cells closer to center get lower weight (less likely to be mines)
   const weights = Array.from({ length: W * H }, (_, i) => {
     const x = i % W, y = Math.floor(i / W);
     const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
     return 0.1 + (dist / maxDist) * 0.9;
   });
 
-  // Weighted shuffle: pick mines one by one using weighted sampling without replacement
   const available = [...Array(W * H).keys()];
   const chosen = [];
   for (let k = 0; k < M; k++) {
@@ -236,6 +225,8 @@ function buildBoard() {
   pausedAt = null;
   totalPaused = 0;
   clearInterval(timerId);
+  activeHint = null;
+  clearHintUI();
 
   setupEl.classList.add("hidden-ui");
   titleEl.classList.add("hidden-ui");
@@ -274,8 +265,7 @@ function regionCenterScore(region, W, H) {
   let score = 0;
   for (const i of region) {
     const x = i % W, y = Math.floor(i / W);
-    const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-    score += dist;
+    score += Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
   }
   return score / region.length;
 }
@@ -286,17 +276,13 @@ function findBiggestZeroRegion() {
 
   for (const c of cells) {
     if (c.mine || c.num !== 0 || seen.has(c.i)) continue;
-    const region = [];
-    const q = [c.i];
+    const region = [], q = [c.i];
     seen.add(c.i);
     while (q.length) {
       const cur = q.shift();
       region.push(cur);
       for (const n of neighbors(cur)) {
-        if (!seen.has(n) && !cells[n].mine && cells[n].num === 0) {
-          seen.add(n);
-          q.push(n);
-        }
+        if (!seen.has(n) && !cells[n].mine && cells[n].num === 0) { seen.add(n); q.push(n); }
       }
     }
     regions.push(region);
@@ -308,8 +294,7 @@ function findBiggestZeroRegion() {
   const threshold = maxSize * 0.75;
   const candidates = regions.filter(r => r.length >= threshold);
 
-  let best = candidates[0];
-  let bestScore = Infinity;
+  let best = candidates[0], bestScore = Infinity;
   for (const r of candidates) {
     const score = regionCenterScore(r, W, H);
     if (score < bestScore) { bestScore = score; best = r; }
@@ -330,12 +315,8 @@ function render() {
     el.addEventListener("click", e => {
       e.preventDefault();
       if (paused) return;
-
-      if (e.shiftKey) {
-        toggleQuestion(c.i);
-        return;
-      }
-
+      clearHint();
+      if (e.shiftKey) { toggleQuestion(c.i); return; }
       swapClicks ? doRightAction(c.i) : reveal(c.i);
     });
 
@@ -343,7 +324,7 @@ function render() {
       e.preventDefault();
       e.stopPropagation();
       if (paused) return;
-
+      clearHint();
       swapClicks ? reveal(c.i) : doRightAction(c.i);
     });
 
@@ -355,33 +336,30 @@ function render() {
 }
 
 function paint() {
+  const hintSet  = activeHint ? new Set(activeHint.cells) : new Set();
+  const srcSet   = activeHint?.source !== undefined ? new Set([activeHint.source]) : new Set();
+
   for (const c of cells) {
     const el = c.el;
     el.className = "cell";
 
     if (c.open) {
       el.classList.add("open");
-
-      if (c.num > 0 && isChordable(c.i)) {
-        el.classList.add("chordable");
-      }
-
+      if (c.num > 0 && isChordable(c.i)) el.classList.add("chordable");
       el.textContent = c.mine ? "💣" : (c.num || "");
       if (c.num) el.classList.add("n" + c.num);
     } else {
       el.classList.add("hidden");
-
       if (biggestRegion.has(c.i)) el.classList.add("region");
+      if (c.flag) { el.classList.add("flagged"); el.textContent = "🚩"; }
+      else if (c.question) { el.classList.add("question"); el.textContent = "?"; }
+      else el.textContent = "";
+    }
 
-      if (c.flag) {
-        el.classList.add("flagged");
-        el.textContent = "🚩";
-      } else if (c.question) {
-        el.classList.add("question");
-        el.textContent = "?";
-      } else {
-        el.textContent = "";
-      }
+    // Hint overlays
+    if (srcSet.has(c.i)) el.classList.add("hint-source");
+    if (hintSet.has(c.i)) {
+      el.classList.add(activeHint.type === "flag" ? "hint-flag" : activeHint.type === "guess" ? "hint-guess" : "hint-open");
     }
   }
 }
@@ -403,10 +381,8 @@ function startTimer() {
 
 function reveal(i) {
   if (gameOver || paused) return;
-
   const c = cells[i];
   if (c.open || c.flag) return;
-
   startTimer();
 
   if (!firstMoveDone) {
@@ -434,21 +410,16 @@ function reveal(i) {
 }
 
 function floodReveal(i) {
-  const q = [i];
-  const seen = new Set();
-
+  const q = [i], seen = new Set();
   while (q.length) {
     const cur = q.shift();
     if (seen.has(cur)) continue;
     seen.add(cur);
-
     const c = cells[cur];
     if (c.open || c.flag || c.mine) continue;
-
     c.open = true;
     c.question = false;
     openedCount++;
-
     if (c.num === 0) {
       for (const n of neighbors(cur)) {
         if (!seen.has(n) && !cells[n].mine && !cells[n].flag) q.push(n);
@@ -459,19 +430,12 @@ function floodReveal(i) {
 
 function doRightAction(i) {
   if (gameOver || paused) return;
-
   const c = cells[i];
-
   if (!c.open) {
     if (!firstMoveDone) {
       firstMoveDone = true;
       startTimer();
-      if (biggestRegion.size > 0) {
-        floodReveal([...biggestRegion][0]);
-        paint();
-        checkWin();
-        return;
-      }
+      if (biggestRegion.size > 0) { floodReveal([...biggestRegion][0]); paint(); checkWin(); return; }
     }
     if (c.question) c.question = false;
     c.flag = !c.flag;
@@ -479,52 +443,35 @@ function doRightAction(i) {
     updateHUD();
     return;
   }
-
   chord(i);
 }
 
 function chord(i) {
   const c = cells[i];
   if (!c.open || c.num <= 0) return;
-
   const ns = neighbors(i);
   const flags = ns.filter(n => cells[n].flag).length;
   if (flags !== c.num) return;
-
   startTimer();
-
   for (const n of ns) {
     if (!cells[n].flag && !cells[n].open) {
-      if (cells[n].mine) {
-        cells[n].open = true;
-        lose();
-        return;
-      }
+      if (cells[n].mine) { cells[n].open = true; lose(); return; }
       floodReveal(n);
     }
   }
-
   paint();
   checkWin();
 }
 
 function toggleQuestion(i) {
   if (gameOver || paused) return;
-
   const c = cells[i];
   if (c.open || c.flag) return;
-
   if (!firstMoveDone) {
     firstMoveDone = true;
     startTimer();
-    if (biggestRegion.size > 0) {
-      floodReveal([...biggestRegion][0]);
-      paint();
-      checkWin();
-      return;
-    }
+    if (biggestRegion.size > 0) { floodReveal([...biggestRegion][0]); paint(); checkWin(); return; }
   }
-
   c.question = !c.question;
   paint();
 }
@@ -532,11 +479,8 @@ function toggleQuestion(i) {
 function lose() {
   gameOver = true;
   clearInterval(timerId);
-
-  for (const c of cells) {
-    if (c.mine) c.open = true;
-  }
-
+  clearHint();
+  for (const c of cells) { if (c.mine) c.open = true; }
   paint();
   updateHUD();
   alert("Boom. You lost.");
@@ -546,17 +490,14 @@ function checkWin() {
   if (openedCount === W * H - M) {
     gameOver = true;
     clearInterval(timerId);
-
+    clearHint();
     for (const c of cells) { if (c.mine) c.flag = true; }
-
     paint();
     updateHUD();
-
     const t = parseFloat(elapsed());
     const diff = activeDiff || "custom";
     const seedNum = getSeedNumber(seedText, W, H, M);
     saveStatWin(diff, t, seedText, seedNum, W, H, M);
-
     alert(`Cleared! Time: ${elapsed()}s`);
   }
   updateHUD();
@@ -570,16 +511,13 @@ function updateHUD() {
 
 function elapsed() {
   if (!startTime) return "0.0";
-
   const now = paused ? pausedAt : Date.now();
   return ((now - startTime - totalPaused) / 1000).toFixed(1);
 }
 
 function togglePause() {
   if (!running || gameOver) return;
-
   paused = !paused;
-
   if (paused) {
     pausedAt = Date.now();
     clearInterval(timerId);
@@ -590,10 +528,8 @@ function togglePause() {
     pausedAt = null;
     pauseBtn.textContent = "Pause";
     maskEl.classList.remove("show");
-
     if (startTime) timerId = setInterval(updateHUD, 100);
   }
-
   updateHUD();
 }
 
@@ -608,21 +544,61 @@ function resetToSetup() {
   hudEl.classList.add("hidden-ui");
   setupEl.classList.remove("hidden-ui");
   titleEl.classList.remove("hidden-ui");
+  clearHint();
   document.getElementById("seed").value = getDailySeed();
 }
 
-document.addEventListener("contextmenu", e => {
-  if (running) e.preventDefault();
-});
+// ── HINT SYSTEM ───────────────────────────────
+function clearHint() {
+  activeHint = null;
+  clearHintUI();
+  paint();
+}
+
+function clearHintUI() {
+  const panel = document.getElementById("hintPanel");
+  if (panel) panel.classList.add("hidden-ui");
+}
+
+function showHint() {
+  if (!running || gameOver || paused) return;
+  if (!firstMoveDone) {
+    showHintPanel("💡", "Click any green cell to start — it opens the largest safe region automatically.", "hint-open");
+    return;
+  }
+  const hint = getNextHint(cells, W, H, M);
+  if (!hint) {
+    showHintPanel("✅", "The board looks solved or no further moves detected.", "");
+    return;
+  }
+  activeHint = hint;
+  const tierLabels = { 1: "Basic", 2: "Intermediate", 3: "Advanced", 4: "Deep logic", 5: "Guess" };
+  const tier = tierLabels[hint.tier] || "";
+  showHintPanel(`💡 ${tier}`, hint.explanation, hint.type === "flag" ? "hint-flag-panel" : hint.type === "guess" ? "hint-guess-panel" : "hint-open-panel");
+  paint();
+}
+
+function showHintPanel(title, text, cls) {
+  const panel = document.getElementById("hintPanel");
+  if (!panel) return;
+  panel.className = "hint-panel " + (cls || "");
+  panel.classList.remove("hidden-ui");
+  panel.innerHTML = `<span class="hint-title">${title}</span><span class="hint-text">${text}</span><button class="hint-close btn-icon" onclick="this.closest('.hint-panel').classList.add('hidden-ui'); activeHint=null; paint()">✕</button>`;
+}
+
+document.addEventListener("contextmenu", e => { if (running) e.preventDefault(); });
 
 document.getElementById("startBtn").addEventListener("click", buildBoard);
 document.getElementById("resetBtn").addEventListener("click", resetToSetup);
+document.getElementById("hintBtn").addEventListener("click", showHint);
+
 document.getElementById("randomBtn").addEventListener("click", () => {
   document.getElementById("seed").value = Math.random().toString(36).slice(2, 10);
   activeDiff = null;
   document.querySelectorAll(".diff-btn").forEach(b => b.classList.remove("active"));
   schedulePreview();
 });
+
 document.getElementById("copyBtn").addEventListener("click", async () => {
   const seed = document.getElementById("seed").value.trim() || "default";
   const w = clamp(parseInt(document.getElementById("width").value, 10), 5, 60);
@@ -634,38 +610,31 @@ document.getElementById("copyBtn").addEventListener("click", async () => {
     await navigator.clipboard.writeText(v);
   } catch {
     const ta = document.createElement("textarea");
-    ta.value = v;
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
+    ta.value = v; ta.style.position = "fixed"; ta.style.left = "-9999px";
+    document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); document.body.removeChild(ta);
   }
 });
+
 pauseBtn.addEventListener("click", togglePause);
 swapToggle.addEventListener("click", () => {
   swapClicks = !swapClicks;
   swapToggle.textContent = swapClicks ? "Swapped" : "Normal";
 });
 
-// ── DIFFICULTY PRESETS ──
+// ── DIFFICULTY PRESETS ────────────────────────
 const DIFFICULTIES = {
-  easy: { w: 9, h: 9, m: 10, label: "Easy" },
-  medium: { w: 16, h: 16, m: 40, label: "Medium" },
-  hard: { w: 30, h: 16, m: 99, label: "Hard" },
-  expert: { w: 30, h: 20, m: 145, label: "Expert" },
-  master: { w: 40, h: 25, m: 250, label: "Master" },
+  easy:   { w: 9,  h: 9,  m: 10,  label: "Easy"   },
+  medium: { w: 16, h: 16, m: 40,  label: "Medium"  },
+  hard:   { w: 30, h: 16, m: 99,  label: "Hard"    },
+  expert: { w: 30, h: 20, m: 145, label: "Expert"  },
+  master: { w: 40, h: 25, m: 250, label: "Master"  },
 };
 
 const STATS_KEY = "minesweeper-stats";
 
 function loadStats() {
-  try {
-    return JSON.parse(localStorage.getItem(STATS_KEY)) || {};
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem(STATS_KEY)) || {}; } catch { return {}; }
 }
 
 function saveStatWin(diff, time, seed, seedNum, w, h, m) {
@@ -732,7 +701,6 @@ function renderStatsModal(tab) {
   document.querySelectorAll(".stats-tab").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab)
   );
-
   const stats = loadStats();
   const s = stats[tab];
   const el = document.getElementById("statsContent");
@@ -755,19 +723,16 @@ function renderStatsModal(tab) {
     <table class="stats-table">
       <thead>
         <tr>
-          <th>#</th>
-          <th>Time</th>
-          <th>Seed</th>
-          <th class="r">ID#</th>
+          <th>#</th><th>Time</th><th>Seed</th><th class="r">ID#</th>
           ${tab === "custom" ? "<th>Size</th>" : ""}
           <th class="r">Date</th>
         </tr>
       </thead>
       <tbody>
         ${sorted.map((r, i) => {
-    const date = new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    const rankClass = i === 0 ? "gold" : "";
-    return `<tr>
+          const date = new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+          const rankClass = i === 0 ? "gold" : "";
+          return `<tr>
             <td class="rank ${rankClass}">${i === 0 ? "★" : i + 1}</td>
             <td class="${rankClass}">${r.time.toFixed(1)}s</td>
             <td class="seed-cell">${r.seed}</td>
@@ -775,7 +740,7 @@ function renderStatsModal(tab) {
             ${tab === "custom" ? `<td>${r.w}×${r.h} m${r.m}</td>` : ""}
             <td class="r" style="color:#555">${date}</td>
           </tr>`;
-  }).join("")}
+        }).join("")}
       </tbody>
     </table>`;
 }
@@ -790,7 +755,7 @@ document.getElementById("statsModal").addEventListener("click", e => {
   if (e.target === document.getElementById("statsModal")) closeStats();
 });
 
-// ── LIVE PREVIEW ──
+// ── LIVE PREVIEW + RATING ─────────────────────
 let previewTimeout = null;
 
 function schedulePreview() {
@@ -821,7 +786,7 @@ function drawPreview() {
   const maxM = total - 9;
   const mCount = clamp(pm, 1, Math.max(1, maxM));
 
-  const miniCells = Array.from({ length: total }, () => ({ mine: false, num: 0 }));
+  const miniCells = Array.from({ length: total }, (_, i) => ({ i, mine: false, num: 0, open: false, flag: false }));
   const rng = seededRandom(`${pseedNum}|${pw}x${ph}|${mCount}`);
 
   const ccx = (pw - 1) / 2, ccy = (ph - 1) / 2;
@@ -873,13 +838,31 @@ function drawPreview() {
   const pct = ((mCount / total) * 100).toFixed(0);
   document.getElementById("previewInfo").textContent =
     `${pw} × ${ph} · ${mCount} mines (${pct}%) · seed: #${pseedNum}`;
+
+  // ── Board rating (async, non-blocking) ──────
+  updateRatingBadge("⏳", "rating-loading", "Analyzing…");
+  const startCell = bestReg.size > 0 ? [...bestReg][0] : undefined;
+  setTimeout(() => {
+    try {
+      const result = rateBoard(miniCells, pw, ph, mCount, startCell);
+      const r = result.rating;
+      updateRatingBadge(r.emoji, `rating-tier-${result.tier}`, `${r.label} — ${r.desc}`);
+    } catch (e) {
+      updateRatingBadge("❓", "", "Rating unavailable");
+    }
+  }, 0);
+}
+
+function updateRatingBadge(emoji, cls, text) {
+  const el = document.getElementById("ratingBadge");
+  if (!el) return;
+  el.className = "rating-badge " + cls;
+  el.innerHTML = `<span class="rating-emoji">${emoji}</span><span class="rating-text">${text}</span>`;
 }
 
 // Hook preview to inputs
 ["seed", "cellSize"].forEach(id => {
-  document.getElementById(id).addEventListener("input", () => {
-    schedulePreview();
-  });
+  document.getElementById(id).addEventListener("input", schedulePreview);
 });
 ["width", "height", "mines"].forEach(id => {
   document.getElementById(id).addEventListener("input", () => {
@@ -893,4 +876,3 @@ loadSettings();
 document.getElementById("seed").value = getDailySeed();
 setDifficulty("medium");
 schedulePreview();
-
