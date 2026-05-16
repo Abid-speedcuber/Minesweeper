@@ -476,13 +476,66 @@ export function rateBoard(cells, W, H, M, startCell) {
 // ── Explanation helpers ───────────────────────
 
 function cellLabel(i, W) {
-    return `(row ${Math.floor(i / W) + 1}, col ${(i % W) + 1})`;
+    return `r${Math.floor(i / W) + 1}c${(i % W) + 1}`;
 }
 
 function listCells(arr, W) {
     if (arr.length === 1) return cellLabel(arr[0], W);
     if (arr.length === 2) return `${cellLabel(arr[0], W)} and ${cellLabel(arr[1], W)}`;
     return arr.slice(0, -1).map(c => cellLabel(c, W)).join(", ") + ", and " + cellLabel(arr[arr.length - 1], W);
+}
+
+function allTargetsPhrase(count) {
+    if (count === 1) return "it";
+    if (count === 2) return "both of them";
+    return `all ${count} of them`;
+}
+
+function countPhrase(count, singular, plural = `${singular}s`) {
+    if (count === 0) return `no ${plural}`;
+    if (count === 1) return `one ${singular}`;
+    if (count === 2) return `two ${plural}`;
+    return `${count} ${plural}`;
+}
+
+function exactlyCountPhrase(count, singular, plural = `${singular}s`) {
+    if (count === 0) return `no ${plural}`;
+    return `exactly ${countPhrase(count, singular, plural)}`;
+}
+
+function allCountPhrase(count, singular, plural = `${singular}s`) {
+    if (count === 0) return `no ${plural}`;
+    if (count === 1) return `the one ${singular}`;
+    if (count === 2) return `both ${plural}`;
+    return `all ${count} ${plural}`;
+}
+
+function cellSubject(count) {
+    if (count === 1) return "that cell";
+    if (count === 2) return "both cells";
+    return `all ${count} cells`;
+}
+
+function amongCellsPhrase(count) {
+    if (count === 1) return "that one cell";
+    if (count === 2) return "those two cells";
+    return `those ${count} cells`;
+}
+
+function minePredicate(count) {
+    return count === 1 ? "is a mine" : "are mines";
+}
+
+function hiddenMineSentence(mineCount, cellList, cellCount) {
+    const verb = mineCount === 1 ? "is" : "are";
+    const unknownTarget = cellCount === 1 ? "cell it is" : "cells they are";
+    return `There ${verb} ${countPhrase(mineCount, "mine")} hidden among ${cellList}, but we can't determine which ${unknownTarget} yet.`;
+}
+
+function highlightedCellsPhrase(count) {
+    if (count === 1) return "highlighted cell";
+    if (count === 2) return "two highlighted cells";
+    return `${count} highlighted cells`;
 }
 
 function findSourceCell(cells, W, H, constraintCells) {
@@ -508,12 +561,11 @@ function findSourceCell(cells, W, H, constraintCells) {
 
 function explainT1Flag(c, unknown, W) {
     const loc = cellLabel(c.i, W);
-    const flagged = /* already computed outside */ 0;
     const lines = [];
     lines.push(`Look at the ${c.num} at ${loc}.`);
-    lines.push(`It needs exactly ${c.num} mine${c.num > 1 ? "s" : ""} among its unrevealed neighbors, and it has exactly ${unknown.length} unrevealed unflagged neighbor${unknown.length > 1 ? "s" : ""}: ${listCells(unknown, W)}.`);
-    lines.push(`Since the count of required mines equals the count of available cells, every single one of those neighbors must be a mine.`);
-    lines.push(`Flag ${unknown.length > 1 ? "all of them" : "it"}.`);
+    lines.push(`It needs ${exactlyCountPhrase(c.num, "mine")} among its unrevealed neighbors, and it has ${exactlyCountPhrase(unknown.length, "unrevealed unflagged neighbor")}: ${listCells(unknown, W)}.`);
+    lines.push(`Since the required mine count matches the available cells, ${cellSubject(unknown.length)} ${minePredicate(unknown.length)}.`);
+    lines.push(`Flag ${allTargetsPhrase(unknown.length)}.`);
     return lines.join(" ");
 }
 
@@ -521,12 +573,12 @@ function explainT1Open(c, unknown, flagged, W) {
     const loc = cellLabel(c.i, W);
     const lines = [];
     lines.push(`Look at the ${c.num} at ${loc}.`);
-    lines.push(`It needs ${c.num} mine${c.num > 1 ? "s" : ""} among its neighbors, and you've already flagged ${flagged} neighbor${flagged > 1 ? "s" : ""} next to it — that's exactly ${c.num}.`);
+    lines.push(`It needs ${countPhrase(c.num, "mine")} among its neighbors, and you've already flagged ${countPhrase(flagged, "neighbor")} next to it. That accounts for the full count.`);
     lines.push(`So all the mines touching this cell are accounted for.`);
     if (unknown.length === 1) {
         lines.push(`The remaining unflagged neighbor at ${cellLabel(unknown[0], W)} cannot be a mine. Open it safely.`);
     } else {
-        lines.push(`The remaining ${unknown.length} unflagged neighbors — ${listCells(unknown, W)} — cannot be mines. Open them all safely.`);
+        lines.push(`The ${countPhrase(unknown.length, "remaining unflagged neighbor")} — ${listCells(unknown, W)} — cannot be mines. Open ${allTargetsPhrase(unknown.length)} safely.`);
     }
     return lines.join(" ");
 }
@@ -534,9 +586,9 @@ function explainT1Open(c, unknown, flagged, W) {
 function explainT1bFlag(cell, reason, remaining, W) {
     const loc = cellLabel(cell, W);
     const lines = [];
-    lines.push(`There ${remaining === 1 ? "is" : "are"} ${remaining} mine${remaining > 1 ? "s" : ""} left to place on the entire board.`);
+    lines.push(`There ${remaining === 1 ? "is" : "are"} ${countPhrase(remaining, "mine")} left to place on the entire board.`);
     lines.push(`Consider the cell at ${loc}.`);
-    lines.push(`Suppose it were safe — then the ${remaining} mine${remaining > 1 ? "s" : ""} would have to go elsewhere. But ${reason}.`);
+    lines.push(`Suppose it were safe — then ${remaining === 1 ? "that mine" : "those mines"} would have to go elsewhere. But ${reason}.`);
     lines.push(`That's a contradiction, so the assumption is wrong: ${loc} must be a mine. Flag it.`);
     return lines.join(" ");
 }
@@ -544,7 +596,7 @@ function explainT1bFlag(cell, reason, remaining, W) {
 function explainT1bOpen(cell, reason, remaining, W) {
     const loc = cellLabel(cell, W);
     const lines = [];
-    lines.push(`There ${remaining === 1 ? "is" : "are"} ${remaining} mine${remaining > 1 ? "s" : ""} left to place on the entire board.`);
+    lines.push(`There ${remaining === 1 ? "is" : "are"} ${countPhrase(remaining, "mine")} left to place on the entire board.`);
     lines.push(`Consider the cell at ${loc}.`);
     lines.push(`Suppose it were a mine — then ${reason}.`);
     lines.push(`That's a contradiction, so ${loc} cannot be a mine. It is safe to open.`);
@@ -564,19 +616,19 @@ function explainT2(A, B, diff, diffMines, cells, W, H) {
 
     const lines = [];
     lines.push(`This uses a technique called constraint subtraction. Let's walk through it step by step.`);
-    lines.push(`\n\nFirst, look at ${aLabel}. Its unknown neighbors are: ${aList}. Exactly ${A.mines} of those ${A.cells.size} cell${A.cells.size > 1 ? "s" : ""} ${A.mines === 1 ? "is a mine" : "are mines"}.`);
-    lines.push(`\n\nNow look at ${bLabel}. Its unknown neighbors are: ${bList}. Exactly ${B.mines} of those ${B.cells.size} cell${B.cells.size > 1 ? "s" : ""} ${B.mines === 1 ? "is a mine" : "are mines"}.`);
-    lines.push(`\n\nNotice that ${aLabel}'s group is entirely contained within ${bLabel}'s group. That means we can subtract: the cells that belong to ${bLabel} but NOT to ${aLabel} are: ${diffList}.`);
+    lines.push(`\n\nFirst, look at ${aLabel}. Its unknown neighbors are ${aList}. Among ${amongCellsPhrase(A.cells.size)}, there ${A.mines === 1 ? "is" : "are"} ${exactlyCountPhrase(A.mines, "mine")}.`);
+    lines.push(`\n\nNow look at ${bLabel}. Its unknown neighbors are ${bList}. Among ${amongCellsPhrase(B.cells.size)}, there ${B.mines === 1 ? "is" : "are"} ${exactlyCountPhrase(B.mines, "mine")}.`);
+    lines.push(`\n\nNotice that ${aLabel}'s group is entirely contained within ${bLabel}'s group. That means we can subtract it. The leftover ${diff.length === 1 ? "cell is" : "cells are"} ${diffList}.`);
 
     if (diffMines === 0) {
-        lines.push(`\n\nSince ${aLabel} already accounts for all ${A.mines} mine${A.mines > 1 ? "s" : ""} in the shared region, the leftover cell${diff.length > 1 ? "s" : ""} — ${diffList} — must contain exactly 0 mines.`);
-        lines.push(`They are all safe. Open ${diff.length > 1 ? "them" : "it"}.`);
+        lines.push(`\n\nSince ${aLabel} already accounts for ${allCountPhrase(A.mines, "mine")} in the shared region, the ${countPhrase(diff.length, "leftover cell")} must contain no mines.`);
+        lines.push(`${cellSubject(diff.length)[0].toUpperCase()}${cellSubject(diff.length).slice(1)} ${diff.length === 1 ? "is" : "are"} safe. Open ${allTargetsPhrase(diff.length)}.`);
     } else {
-        lines.push(`\n\nAfter subtracting ${aLabel}'s ${A.mines} mine${A.mines > 1 ? "s" : ""} from ${bLabel}'s ${B.mines}, the leftover region of ${diff.length} cell${diff.length > 1 ? "s" : ""} must contain exactly ${diffMines} mine${diffMines > 1 ? "s" : ""}.`);
+        lines.push(`\n\nAfter subtracting ${aLabel}'s ${countPhrase(A.mines, "mine")} from ${bLabel}'s ${countPhrase(B.mines, "mine")}, the ${countPhrase(diff.length, "leftover cell")} must contain ${exactlyCountPhrase(diffMines, "mine")}.`);
         if (diffMines === diff.length) {
-            lines.push(`And since that's the same as the number of leftover cells, every single one — ${diffList} — must be a mine. Flag ${diff.length > 1 ? "them all" : "it"}.`);
+            lines.push(`Since that matches the number of leftover cells, ${cellSubject(diff.length)} ${minePredicate(diff.length)}. Flag ${allTargetsPhrase(diff.length)}.`);
         } else {
-            lines.push(`So ${diffMines} of the ${diff.length} cells in ${diffList} are mines, but we can't determine which ones yet. Keep this in mind for further deductions.`);
+            lines.push(`${hiddenMineSentence(diffMines, diffList, diff.length)} Keep this in mind for further deductions.`);
         }
     }
 
@@ -587,13 +639,13 @@ function explainT3(cells, type, targets, W) {
     const targetList = listCells(targets, W);
     const lines = [];
     lines.push(`This requires enumerating all possible mine arrangements — let's walk through the logic.`);
-    lines.push(`\n\nThe highlighted cell${targets.length > 1 ? "s" : ""} — ${targetList} — ${targets.length > 1 ? "are" : "is"} part of a constrained region where we can test every valid way to distribute the remaining mines.`);
+    lines.push(`\n\nThe ${highlightedCellsPhrase(targets.length)} — ${targetList} — ${targets.length > 1 ? "are" : "is"} part of a constrained region where we can test every valid way to distribute the remaining mines.`);
     if (type === "flag") {
         lines.push(`\n\nNo matter how you arrange the mines to satisfy all the numbered cells in this region, ${targets.length > 1 ? "these cells end up as mines in every single valid arrangement" : "this cell ends up as a mine in every single valid arrangement"}.`);
-        lines.push(`When a cell is a mine in 100% of valid configurations, it must be a mine. Flag ${targets.length > 1 ? "them" : "it"}.`);
+        lines.push(`${targets.length === 1 ? "A cell" : "Cells"} mined in 100% of valid configurations ${targets.length === 1 ? "must be a mine" : "must be mines"}. Flag ${allTargetsPhrase(targets.length)}.`);
     } else {
         lines.push(`\n\nNo matter how you arrange the mines to satisfy all the numbered cells in this region, ${targets.length > 1 ? "these cells are always mine-free in every valid arrangement" : "this cell is always mine-free in every valid arrangement"}.`);
-        lines.push(`When a cell is safe in 100% of valid configurations, it must be safe. Open ${targets.length > 1 ? "them" : "it"}.`);
+        lines.push(`${targets.length === 1 ? "A cell" : "Cells"} safe in 100% of valid configurations can be opened safely. Open ${allTargetsPhrase(targets.length)}.`);
     }
     return lines.join("");
 }
@@ -602,13 +654,17 @@ function explainT4(type, targets, remaining, W) {
     const targetList = listCells(targets, W);
     const lines = [];
     if (type === "open") {
-        lines.push(`Global deduction: there are ${remaining} mines left on the board, and they are all already accounted for by cells on the constraint frontier (the numbered cells you can see).`);
-        lines.push(`\n\nThat means the cells with no numbered neighbors at all — the "dark" unexplored region — contain zero mines.`);
-        lines.push(`\n\nSpecifically, ${targetList} ${targets.length > 1 ? "are" : "is"} in that dark region and guaranteed safe. Open ${targets.length > 1 ? "them" : "it"}.`);
+        if (remaining === 0) {
+            lines.push(`Global deduction: there are no mines left on the board.`);
+        } else {
+            lines.push(`Global deduction: there ${remaining === 1 ? "is" : "are"} ${countPhrase(remaining, "mine")} left on the board, and ${remaining === 1 ? "it is" : "they are"} already accounted for by cells on the constraint frontier (the numbered cells you can see).`);
+        }
+        lines.push(`\n\nThat means the cells with no numbered neighbors at all — the "dark" unexplored region — contain no mines.`);
+        lines.push(`\n\nSpecifically, ${targetList} ${targets.length > 1 ? "are" : "is"} in that dark region and guaranteed safe. Open ${allTargetsPhrase(targets.length)}.`);
     } else {
         lines.push(`Global deduction: count the mines remaining (${remaining}) and count the unrevealed cells outside the constraint frontier.`);
-        lines.push(`\n\nThey match exactly — so every single cell in the unexplored dark region must be a mine.`);
-        lines.push(`\n\n${targetList} ${targets.length > 1 ? "are" : "is"} in that region. Flag ${targets.length > 1 ? "them" : "it"}.`);
+        lines.push(`\n\nThey match exactly, so ${cellSubject(targets.length)} in the unexplored dark region ${minePredicate(targets.length)}.`);
+        lines.push(`\n\n${targetList} ${targets.length > 1 ? "are" : "is"} in that region. Flag ${allTargetsPhrase(targets.length)}.`);
     }
     return lines.join("");
 }

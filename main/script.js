@@ -1,5 +1,5 @@
 // Minesweeper Game Module
-import { rateBoard, getNextHint, TIER, RATING } from "./solver.js";
+import { rateBoard, getNextHint } from "./solver.js";
 
 const setupEl = document.getElementById("setup");
 const hudEl = document.getElementById("hud");
@@ -28,6 +28,55 @@ let timerId = null;
 
 // ── Hint state ────────────────────────────────
 let activeHint = null; // { tier, type, cells[], explanation }
+const HINT_COLORS = ["#67e8f9", "#c4b5fd", "#fda4af", "#86efac", "#fde68a", "#f9a8d4", "#93c5fd", "#fdba74"];
+
+function escapeHtml(value) {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function hintLabelToIndex(label) {
+    const match = /^r(\d+)c(\d+)$/i.exec(label);
+    if (!match) return null;
+    const row = parseInt(match[1], 10);
+    const col = parseInt(match[2], 10);
+    if (row < 1 || col < 1 || row > H || col > W) return null;
+    return (row - 1) * W + (col - 1);
+}
+
+function getHintColorMap(text) {
+    const map = new Map();
+    if (!text) return map;
+    for (const match of text.matchAll(/\br\d+c\d+\b/gi)) {
+        const label = match[0].toLowerCase();
+        const cellIndex = hintLabelToIndex(label);
+        if (cellIndex === null || map.has(cellIndex)) continue;
+        map.set(cellIndex, HINT_COLORS[map.size % HINT_COLORS.length]);
+    }
+    return map;
+}
+
+function formatHintText(text) {
+    const colorMap = getHintColorMap(text);
+    const labelColorMap = new Map();
+    for (const [cellIndex, color] of colorMap) {
+        const row = Math.floor(cellIndex / W) + 1;
+        const col = (cellIndex % W) + 1;
+        labelColorMap.set(`r${row}c${col}`, color);
+    }
+
+    return escapeHtml(text)
+        .replace(/\br\d+c\d+\b/gi, label => {
+            const color = labelColorMap.get(label.toLowerCase());
+            if (!color) return label;
+            return `<span class="hint-cell-ref" style="--hint-color:${color}">${label}</span>`;
+        })
+        .replace(/\n\n/g, "<br><br>");
+}
 
 function xmur3(str) {
     let h = 1779033703 ^ str.length;
@@ -338,10 +387,12 @@ function render() {
 function paint() {
     const hintSet = activeHint ? new Set(activeHint.cells) : new Set();
     const srcSet = activeHint?.source !== undefined ? new Set([activeHint.source]) : new Set();
+    const hintColorMap = getHintColorMap(activeHint?.explanation || "");
 
     for (const c of cells) {
         const el = c.el;
         el.className = "cell";
+        el.style.removeProperty("--hint-color");
 
         if (c.open) {
             el.classList.add("open");
@@ -360,6 +411,10 @@ function paint() {
         if (srcSet.has(c.i)) el.classList.add("hint-source");
         if (hintSet.has(c.i)) {
             el.classList.add(activeHint.type === "flag" ? "hint-flag" : activeHint.type === "guess" ? "hint-guess" : "hint-open");
+        }
+        if (hintColorMap.has(c.i)) {
+            el.style.setProperty("--hint-color", hintColorMap.get(c.i));
+            el.classList.add("hint-cell-highlight");
         }
     }
 }
@@ -583,7 +638,7 @@ function showHintPanel(title, text, cls) {
     if (!panel) return;
     panel.className = "hint-panel " + (cls || "");
     panel.classList.remove("hidden-ui");
-    const formatted = text.replace(/\n\n/g, '<br><br>');
+    const formatted = formatHintText(text);
     panel.innerHTML = `<span class="hint-title">${title}</span><span class="hint-text">${formatted}</span><button class="hint-close btn-icon" onclick="this.closest('.hint-panel').classList.add('hidden-ui'); activeHint=null; paint()">✕</button>`;
 }
 
@@ -848,7 +903,7 @@ function drawPreview() {
             const result = rateBoard(miniCells, pw, ph, mCount, startCell);
             const r = result.rating;
             updateRatingBadge(r.emoji, `rating-tier-${result.tier}`, `${r.label} — ${r.desc}`);
-        } catch (e) {
+        } catch {
             updateRatingBadge("❓", "", "Rating unavailable");
         }
     }, 0);

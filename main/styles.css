@@ -576,6 +576,14 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
   outline: 2px dashed #94a3b8;
   outline-offset: -2px;
 }
+.cell.hint-cell-highlight {
+  outline: 3px solid var(--hint-color);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hint-color) 75%, transparent), 0 0 10px color-mix(in srgb, var(--hint-color) 50%, transparent);
+  animation: none;
+  position: relative;
+  z-index: 2;
+}
 @keyframes hint-pulse {
   from { outline-color: transparent; }
   to   { outline-color: currentColor; }
@@ -607,6 +615,16 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
   color: #e2e8f0;
 }
 .hint-text { flex: 1; line-height: 1.5; }
+.hint-cell-ref {
+  color: var(--hint-color);
+  background: color-mix(in srgb, var(--hint-color) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hint-color) 48%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .hint-close {
   background: none;
   border: none;
